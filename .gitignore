@@ -12,3 +12,19 @@ docs/
 
 # Dotenv file
 .env
+
+# Foundry
+out/
+cache/
+broadcast/
+
+# Node
+node_modules/
+.env
+
+# Circom/snarkjs artifacts (usually huge)
+circuits/build/
+circuits/*.zkey
+circuits/*.r1cs
+circuits/*.wasm
+circuits/*.sym

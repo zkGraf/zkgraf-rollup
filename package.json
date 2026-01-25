@@ -1,0 +1,7 @@
+{
+  "name": "orgname-rollup",
+  "private": true,
+  "scripts": {
+    "circuits:verifier": "snarkjs zkey export solidityverifier circuits/build/circuit_final.zkey src/verifier/Groth16Verifier.sol"
+  }
+}
