@@ -76,5 +76,5 @@ forge build
 forge test -vvv
 forge fmt
 
+
 ## Contributing
-Questions or ideas? Please use **GitHub Discussions** first (Q&A / Ideas). For bugs or concrete work items, open an **Issue**.
