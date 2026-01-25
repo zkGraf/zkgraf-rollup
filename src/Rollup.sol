@@ -16,8 +16,7 @@ interface IGroth16Verifier {
     ) external view returns (bool);
 }
 
-
-/// @notice Minimal reentrancy guard 
+/// @notice Minimal reentrancy guard
 abstract contract ReentrancyGuard {
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
@@ -38,7 +37,6 @@ contract Rollup is ReentrancyGuard {
     IRegistry public immutable registry;
     IGroth16Verifier public immutable verifier;
 
-
     /// @dev Circuit max txs per batch (enforced on-chain)
     uint32 public constant MAX_BATCH = 100;
 
@@ -57,11 +55,11 @@ contract Rollup is ReentrancyGuard {
     // Pair state (handshake)
     // =============================================================
     struct PairPacked {
-        uint64 windowStart;      // 0 => not open
-        bool   loFunded;
-        bool   hiFunded;
-        uint8  stakeIndex;       // 0 => inactive
-        uint8  durationIndex;    // window preset index
+        uint64 windowStart; // 0 => not open
+        bool loFunded;
+        bool hiFunded;
+        uint8 stakeIndex; // 0 => inactive
+        uint8 durationIndex; // window preset index
     }
 
     mapping(address => mapping(address => PairPacked)) public pairs; //[lo][hi]
@@ -92,7 +90,7 @@ contract Rollup is ReentrancyGuard {
     // =============================================================
     // Opcodes
     // =============================================================
-    uint8 internal constant OP_ADD    = 1;
+    uint8 internal constant OP_ADD = 1;
     uint8 internal constant OP_REVOKE = 2;
 
     // =============================================================
@@ -148,12 +146,9 @@ contract Rollup is ReentrancyGuard {
         uint8 durationIndex
     );
 
-    event VouchCancelled(address indexed caller, address indexed 
-counterparty, uint256 creditedWei);
-    event ClosedNoLink(address indexed caller, address indexed 
-counterparty, uint256 stakeWei);
-    event Stolen(address indexed thief, address indexed counterparty, 
-uint256 paidWei);
+    event VouchCancelled(address indexed caller, address indexed counterparty, uint256 creditedWei);
+    event ClosedNoLink(address indexed caller, address indexed counterparty, uint256 stakeWei);
+    event Stolen(address indexed thief, address indexed counterparty, uint256 paidWei);
 
     /// @notice Emitted when an op is appended to the unforged queue.
     /// @dev Circuit should treat duplicate ADD and REVOKE-missing as NO-OP (Option 1).
@@ -169,19 +164,12 @@ uint256 paidWei);
     );
 
     event BatchSubmitted(
-        uint64 indexed batchId,
-        uint32 n,
-        uint32 startTxId,
-        bytes32 storageHash,
-        bytes32 newGraphRoot,
-        bytes txData
+        uint64 indexed batchId, uint32 n, uint32 startTxId, bytes32 storageHash, bytes32 newGraphRoot, bytes txData
     );
 
     event Withdrawal(address indexed account, uint256 amount);
-    event FeePaid(address indexed payer, uint32 indexed txId, uint256 
-amount);
-    event BatcherPaid(address indexed batcher, uint64 indexed batchId, 
-uint32 n, uint256 amount);
+    event FeePaid(address indexed payer, uint32 indexed txId, uint256 amount);
+    event BatcherPaid(address indexed batcher, uint64 indexed batchId, uint32 n, uint256 amount);
 
     // =============================================================
     // Deposits (optional)
@@ -197,7 +185,9 @@ uint32 n, uint256 amount);
         uint256 b = balances[msg.sender];
 
         if (b >= required) {
-            unchecked { balances[msg.sender] = b - required; }
+            unchecked {
+                balances[msg.sender] = b - required;
+            }
             if (msg.value != 0) balances[msg.sender] += msg.value;
             return;
         }
@@ -211,11 +201,7 @@ uint32 n, uint256 amount);
     // =============================================================
     // Handshake: vouch / revouch / cancel / steal / close / finalize
     // =============================================================
-    function vouch(address counterparty, uint8 stakeIndex, uint8 durationIndex)
-        external
-        payable
-        nonReentrant
-    {
+    function vouch(address counterparty, uint8 stakeIndex, uint8 durationIndex) external payable nonReentrant {
         if (counterparty == address(0)) revert ZeroAddress();
         if (counterparty == msg.sender) revert Self();
 
@@ -243,11 +229,7 @@ uint32 n, uint256 amount);
         emit Vouched(msg.sender, counterparty, lo, hi, stakeIndex, durationIndex, stakeWei);
     }
 
-    function revouch(address counterparty)
-        external
-        payable
-        nonReentrant
-    {
+    function revouch(address counterparty) external payable nonReentrant {
         if (counterparty == address(0)) revert ZeroAddress();
         if (counterparty == msg.sender) revert Self();
 
@@ -330,8 +312,7 @@ uint32 n, uint256 amount);
         emit Stolen(msg.sender, counterparty, stakeWei * 2);
     }
 
-    function closeWithoutSteal(address counterparty) external nonReentrant 
-{
+    function closeWithoutSteal(address counterparty) external nonReentrant {
         if (counterparty == address(0)) revert ZeroAddress();
         if (counterparty == msg.sender) revert Self();
 
@@ -355,22 +336,18 @@ uint32 n, uint256 amount);
         emit ClosedNoLink(msg.sender, counterparty, stakeWei);
     }
 
-    function revouchAndSteal(address counterparty)
-        external
-        payable
-        nonReentrant
-    {
+    function revouchAndSteal(address counterparty) external payable nonReentrant {
         if (counterparty == address(0)) revert ZeroAddress();
         if (counterparty == msg.sender) revert Self();
-    
+
         (address lo, address hi) = _order(msg.sender, counterparty);
         PairPacked storage p = pairs[lo][hi];
-    
+
         if (p.stakeIndex == 0) revert PairNotActive();
         if (p.windowStart != 0) revert WindowAlreadyOpen();
-    
+
         bool callerIsLo = (msg.sender == lo);
-    
+
         // Must be the unfunded side; counterparty must already be funded.
         if (callerIsLo) {
             if (p.loFunded) revert AlreadyFunded();
@@ -379,31 +356,30 @@ uint32 n, uint256 amount);
             if (p.hiFunded) revert AlreadyFunded();
             if (!p.loFunded) revert NotCounterpartyFunded();
         }
-    
+
         uint256 stakeWei = getStakePreset(p.stakeIndex);
-    
+
         // Register + pay stake (same as revouch)
         registry.ensureMyIdx();
         _takeFunds(stakeWei);
-    
+
         // Mark funded and open window (optional, but keeps semantics consistent)
         if (callerIsLo) p.loFunded = true;
         else p.hiFunded = true;
-    
+
         uint64 start = uint64(block.timestamp);
         uint64 end = start + uint64(getWindowPreset(p.durationIndex));
         p.windowStart = start;
-    
+
         emit Vouched(msg.sender, counterparty, lo, hi, p.stakeIndex, p.durationIndex, stakeWei);
         emit WindowOpened(lo, hi, start, end, p.stakeIndex, p.durationIndex);
-    
+
         // Immediately punish: delete pair and pay caller both stakes
         delete pairs[lo][hi];
         balances[msg.sender] += (stakeWei * 2);
-    
+
         emit Stolen(msg.sender, counterparty, stakeWei * 2);
     }
-
 
     /// @notice After window ends, refund both and enqueue an ADD op.
     /// @dev Uniqueness is enforced in-circuit via NO-OP on duplicate ADD.
@@ -482,47 +458,42 @@ uint32 n, uint256 amount);
         uint256[2] calldata c
     ) external nonReentrant {
         if (n == 0 || n > MAX_BATCH) revert BadValue();
-    
+
         uint32 start = lastForgedId + 1;
         uint32 endSnapshot = nextTxId - 1;
         if (endSnapshot < start) revert EmptyBatch();
-    
+
         uint32 avail = endSnapshot - lastForgedId;
         if (n > avail) revert EmptyBatch();
-    
+
         (bytes memory txData, bytes32 storageHash) = _buildTxDataAndStorageHash(start, n);
-    
+
         // Commitment to what the circuit should verify
-        bytes32 pubInputsHash = sha256(
-            abi.encodePacked(
-                latestGraphRoot,
-                newGraphRoot,
-                batchId,
-                n,
-                storageHash
-            )
-        );
-    
+        bytes32 pubInputsHash = sha256(abi.encodePacked(latestGraphRoot, newGraphRoot, batchId, n, storageHash));
+
         uint256[1] memory input;
         input[0] = _maskTo253(pubInputsHash);
-    
+
         if (!verifier.verifyProof(a, b, c, input)) revert VerifyFail();
-    
+
         latestGraphRoot = newGraphRoot;
-    
+
         emit BatchSubmitted(batchId, n, start, storageHash, newGraphRoot, txData);
-    
+
         _deleteForged(start, n);
-    
+
         lastForgedId = lastForgedId + n;
-        unchecked { batchId += 1; }
+        unchecked {
+            batchId += 1;
+        }
 
         uint256 reward = uint256(n) * TX_FEE;
         require(feePool >= reward, "FEEPOOL_LOW");
-        unchecked { feePool -= reward; }
+        unchecked {
+            feePool -= reward;
+        }
         balances[msg.sender] += reward;
     }
-
 
     function _maskTo253(bytes32 h) internal pure returns (uint256) {
         // Keep low 253 bits so value is guaranteed < BN254 scalar field modulus.
@@ -545,18 +516,18 @@ uint32 n, uint256 amount);
             (uint32 ilo, uint32 ihi, uint8 stakeIndex, uint8 durationIndex, uint8 op, uint32 ts) = _unpackTx(w);
 
             // ilo
-            txData[off + 0]  = bytes1(uint8(ilo >> 24));
-            txData[off + 1]  = bytes1(uint8(ilo >> 16));
-            txData[off + 2]  = bytes1(uint8(ilo >> 8));
-            txData[off + 3]  = bytes1(uint8(ilo));
+            txData[off + 0] = bytes1(uint8(ilo >> 24));
+            txData[off + 1] = bytes1(uint8(ilo >> 16));
+            txData[off + 2] = bytes1(uint8(ilo >> 8));
+            txData[off + 3] = bytes1(uint8(ilo));
             // ihi
-            txData[off + 4]  = bytes1(uint8(ihi >> 24));
-            txData[off + 5]  = bytes1(uint8(ihi >> 16));
-            txData[off + 6]  = bytes1(uint8(ihi >> 8));
-            txData[off + 7]  = bytes1(uint8(ihi));
+            txData[off + 4] = bytes1(uint8(ihi >> 24));
+            txData[off + 5] = bytes1(uint8(ihi >> 16));
+            txData[off + 6] = bytes1(uint8(ihi >> 8));
+            txData[off + 7] = bytes1(uint8(ihi));
             // stake/dur/op
-            txData[off + 8]  = bytes1(stakeIndex);
-            txData[off + 9]  = bytes1(durationIndex);
+            txData[off + 8] = bytes1(stakeIndex);
+            txData[off + 9] = bytes1(durationIndex);
             txData[off + 10] = bytes1(op);
             // ts
             txData[off + 11] = bytes1(uint8(ts >> 24));
@@ -583,7 +554,9 @@ uint32 n, uint256 amount);
         uint256 b = balances[msg.sender];
         if (amount > b) revert InsufficientBalance();
 
-        unchecked { balances[msg.sender] = b - amount; }
+        unchecked {
+            balances[msg.sender] = b - amount;
+        }
 
         (bool ok,) = payable(msg.sender).call{value: amount}("");
         if (!ok) revert SendFailed();
@@ -606,34 +579,19 @@ uint32 n, uint256 amount);
     // =============================================================
     // Packing helpers (120 bits used in uint128)
     // =============================================================
-    function _packTx(
-        uint32 ilo,
-        uint32 ihi,
-        uint8 stakeIndex,
-        uint8 durationIndex,
-        uint8 op,
-        uint32 ts
-    ) internal pure returns (uint128 w) {
-        w =
-            (uint128(ilo) << 88) |
-            (uint128(ihi) << 56) |
-            (uint128(stakeIndex) << 48) |
-            (uint128(durationIndex) << 40) |
-            (uint128(op) << 32) |
-            uint128(ts);
+    function _packTx(uint32 ilo, uint32 ihi, uint8 stakeIndex, uint8 durationIndex, uint8 op, uint32 ts)
+        internal
+        pure
+        returns (uint128 w)
+    {
+        w = (uint128(ilo) << 88) | (uint128(ihi) << 56) | (uint128(stakeIndex) << 48) | (uint128(durationIndex) << 40)
+            | (uint128(op) << 32) | uint128(ts);
     }
 
     function _unpackTx(uint128 w)
         internal
         pure
-        returns (
-            uint32 ilo,
-            uint32 ihi,
-            uint8 stakeIndex,
-            uint8 durationIndex,
-            uint8 op,
-            uint32 ts
-        )
+        returns (uint32 ilo, uint32 ihi, uint8 stakeIndex, uint8 durationIndex, uint8 op, uint32 ts)
     {
         ilo = uint32(w >> 88);
         ihi = uint32(w >> 56);
@@ -701,20 +659,19 @@ uint32 n, uint256 amount);
         if (a == address(0) || b == address(0) || a == b) {
             return (address(0), address(0), 0, 0, false, false, 0, 0, false);
         }
-    
+
         (lo, hi) = _order(a, b);
         PairPacked storage p = pairs[lo][hi];
-    
+
         stakeIndex = p.stakeIndex;
         durationIndex = p.durationIndex;
         loFunded = p.loFunded;
         hiFunded = p.hiFunded;
         windowStart = p.windowStart;
-    
+
         if (windowStart != 0) {
             windowEndT = windowStart + uint64(getWindowPreset(durationIndex));
             windowOpen = block.timestamp <= windowEndT;
         }
     }
-
 }

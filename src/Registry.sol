@@ -12,7 +12,6 @@ contract Registry {
 
     /// @notice Create an idx for msg.sender if missing; returns existing otherwise.
     function ensureMyIdx() external returns (uint32 idx) {
-
         idx = accountIdx[msg.sender];
         if (idx != 0) return idx;
 
