@@ -62,7 +62,6 @@ docs/ Specs (encoding, protocol, threat model)
 tools/ Helper scripts (hashing/encoding checks)
 .github/workflows/ CI
 
-
 ---
 
 ## Build & test (Foundry)
@@ -75,6 +74,9 @@ See https://book.getfoundry.sh/getting-started/installation
 forge build
 forge test -vvv
 forge fmt
+```
 
+---
 
 ## Contributing
+Questions or ideas? Please start with **GitHub Discussions** (Q&A / Ideas). For bugs or clearly scoped work items, open an **Issue**.
