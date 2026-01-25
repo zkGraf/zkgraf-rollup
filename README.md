@@ -1,39 +1,78 @@
-# 1. Introduction
+# zkgraf-rollup
 
-*zkGraf - A queryable trust graph for the Ethereum ecosystem*.
+An zk-rollup for maintaining a trust graph between registered accounts.
 
-Having a sybil-resistant measure of uniqueness would have many applications in the Ethereum ecosystem. Relying on pure coin voting has vulnerabilities - see here.
+This repo contains:
+- Solidity contracts (Foundry)
+- Circom/snarkjs circuits 
+- Specs/docs for encoding, hashing, and threat model
 
-One approach to the sybil-resistance problem is using a web-of-trust. ZkGraf is a protocol for building this trust graph on Ethereum. Users can then use this trust graph to prove claims about their uniqueness.
+---
 
-Two key observations:
+## High-level idea
 
-- To use this trust graph for sybil-resistance checks, it is important that the attestations in the graph carry some “weight”. In other words, we need to ensure links in the graph represent actual trust.
-- For robust sybil-resistance, the claims need to be more than just a statement about the attestations of a particular user. They need to be non-local statements, involving a larger portion of the graph. This quickly becomes too expensive to do using on-chain attestations, so instead we need to represent the graph by a state root stored on-chain. Then users can prove claims against this state root using zk proofs. Hence zkGraf is built as an application specific rollup.
+Users enqueue operations (currently `ADD` and `REVOKE`) into an on-chain queue. A batcher (“forger”) selects the next `n` queued ops, constructs `txData`, proves correct state transition in a zkSNARK, and submits a proof to update the on-chain `latestGraphRoot`.
 
-Design choices:
+The contract verifies a Groth16 proof against a single public input:
+- `pub0 = mask253( sha256(latestRoot, newRoot, batchId, n, storageHash) )`
 
-- Fully censorship-resistant and trustless. (Ethereum L1 level censorship-resistance).
-- Operates like a zk-rollup, but with all DA onchain. (This is fine since the throughput of the rollup is small).
-- Batch forging is permissionless. (and cheap, so a user can easily forge their own tx if it is being purposely ignored).
-- Use ETH as fee token. (If we use a native fee token then the rollup can be halted by controlling the supply).
+Where:
+- `storageHash = sha256(batchId, start, n, txData)` (packed encoding)
+- `txData` is `n * 15` bytes, one fixed-size record per queued op
 
-# 2. Main Protocol
+See [`docs/encoding.md`](docs/encoding.md) for the canonical encoding.
 
-**Graph Tree:**
+---
 
-A Merkle tree holding the data of the trust graph. Each leaf corresponds to a node in the trust graph, and contains the ash of its trust link data. The Graph Root is stored in the contract.
+## Contracts
 
-**Forming a trust link:**
+### `Rollup.sol`
+Core queue + batch submission logic.
 
-Two addresses perform a ‘trust link handshake’ in the contract. After this handshake is completed successfully, the new link can be added to pending txs queue (when a user adds a new tx to the queue they include a small tip in ETH for the batcher).
+Key features:
+- **Handshake escrow** for `ADD` edges:
+  - `vouch` / `revouch` open a time window after both stakes are funded
+  - after the window ends, `finalize` refunds stakes and enqueues an `ADD`
+  - during the open window, either party can `steal` (punitive) or `closeWithoutSteal` (refund)
+- **Unforged queue**: `unforged[txId]` stores packed records; batches are committed via `txData` and `storageHash`
+- **Batch submission**: `submitBatch(newGraphRoot, n, a, b, c)` verifies Groth16 proof and advances `batchId`
+- **Fees**:
+  - `finalize` and `revoke` require `msg.value == TX_FEE`
+  - fees accumulate in `feePool`
+  - successful batcher receives `n * TX_FEE` credited to `balances[msg.sender]`
 
-**Updating the Graph Root:**
+### `Registry.sol`
+Simple address → `uint32` index registry.
+- `ensureMyIdx()` assigns an id on first call
+- `accountIdx(address)` returns 0 if unregistered
 
-A batcher can take some txs in the queue, apply them to the Graph Tree, work out the new Graph Root, and submit the batch with a zk-proof of correctness. If correct, the contract updates the Graph Root and pays the tx tips to the batcher.
+### Groth16 Verifier
+The Groth16 verifier contract is generated (snarkjs) and typically lives at:
+- `src/verifier/Groth16Verifier.sol`
 
-# 3. Privacy
+---
 
-This section looks at the how the protocol can be done in a privacy preserving way. 
+## Repository layout
+src/ Solidity contracts
+src/verifier/ Generated verifier (snarkjs)
+test/ Forge unit/invariant tests
+script/ Deployment scripts (forge script)
+circuits/ Circom circuits + snarkjs artifacts (WIP)
+docs/ Specs (encoding, protocol, threat model)
+tools/ Helper scripts (hashing/encoding checks)
+.github/workflows/ CI
 
-The vouching protocol can be done in a privacy-preserving way (analogous to zcash) and claims about a users attestation set can be done too. However proving claims about structural properties of a larger portion of the graph becomes tricky and requires MPC techniques.
+
+---
+
+## Build & test (Foundry)
+
+### Install Foundry
+See https://book.getfoundry.sh/getting-started/installation
+
+### Commands
+```bash
+forge build
+forge test -vvv
+forge fmt
+
