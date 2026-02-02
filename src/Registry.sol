@@ -4,6 +4,10 @@ pragma solidity ^0.8.24;
 contract Registry {
     /// @notice 1-based; 0 = unset
     mapping(address => uint32) public accountIdx;
+
+    /// @notice inverse mapping for rollup finalize/apply
+    mapping(uint32 => address) public idxToAccount;
+
     uint32 public nextIdx = 1;
 
     event AccountCreated(address indexed owner, uint32 indexed idx);
@@ -19,6 +23,7 @@ contract Registry {
 
         idx = nextIdx++;
         accountIdx[msg.sender] = idx;
+        idxToAccount[idx] = msg.sender;
 
         emit AccountCreated(msg.sender, idx);
     }
