@@ -41,14 +41,12 @@ contract Rollup is ReentrancyGuard {
     address public owner;
 
     uint32 public constant MAX_BATCH = 100;
-
-    /// @notice exact ETH required to enqueue one op (finalize or revoke)
-    uint256 public txFeeWei;
+    uint256 public constant TX_FEE_WEI = 0.00005 ether;
 
     /// @notice reward pool funded by enqueue fees
     uint256 public feePool;
 
-    /// @notice owner-controlled handshake params (locked per pair at vouch time)
+    /// @notice owner-controlled handshake params (locked per pair at vouch-time)
     uint256 public stakeWei;
     uint32 public windowDuration; // seconds
 
@@ -60,20 +58,17 @@ contract Rollup is ReentrancyGuard {
     event OwnershipTransferred(address indexed oldOwner, address indexed newOwner);
     event StakeUpdated(uint256 stakeWei);
     event DurationUpdated(uint32 windowDuration);
-    event TxFeeUpdated(uint256 txFeeWei);
 
     constructor(
         address registry_,
         address verifier_,
         uint256 stakeWei_,
-        uint32 windowDuration_,
-        uint256 txFeeWei_
+        uint32 windowDuration_
     ) {
         require(registry_ != address(0), "REGISTRY_ZERO");
         require(verifier_ != address(0), "VERIFIER_ZERO");
         require(stakeWei_ != 0, "STAKE_ZERO");
         require(windowDuration_ != 0, "DURATION_ZERO");
-        require(txFeeWei_ != 0, "TXFEE_ZERO");
 
         registry = IRegistry(registry_);
         verifier = IGroth16Verifier(verifier_);
@@ -81,12 +76,10 @@ contract Rollup is ReentrancyGuard {
 
         stakeWei = stakeWei_;
         windowDuration = windowDuration_;
-        txFeeWei = txFeeWei_;
 
         emit OwnershipTransferred(address(0), msg.sender);
         emit StakeUpdated(stakeWei_);
         emit DurationUpdated(windowDuration_);
-        emit TxFeeUpdated(txFeeWei_);
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
@@ -107,12 +100,6 @@ contract Rollup is ReentrancyGuard {
         emit DurationUpdated(newWindowDuration);
     }
 
-    function setTxFee(uint256 newTxFeeWei) external onlyOwner {
-        require(newTxFeeWei != 0, "TXFEE_ZERO");
-        txFeeWei = newTxFeeWei;
-        emit TxFeeUpdated(newTxFeeWei);
-    }
-
     // =============================================================
     // Pair state (handshake)
     // =============================================================
@@ -127,14 +114,9 @@ contract Rollup is ReentrancyGuard {
     mapping(address => mapping(address => PairPacked)) public pairs; // [lo][hi]
 
     // =============================================================
-    // Permanent finalized links (address-keyed, canonical order)
+    // Truth-state: permanent links (address-keyed, canonical order)
     // =============================================================
     mapping(address => mapping(address => bool)) public linked; // [lo][hi]
-
-    // =============================================================
-    // Pending ops (index-keyed) to prevent duplicates while queued
-    // =============================================================
-    mapping(uint32 => mapping(uint32 => uint8)) public pendingOp; // 0 none, 1 add, 2 revoke
 
     // =============================================================
     // Pull payments
@@ -142,7 +124,7 @@ contract Rollup is ReentrancyGuard {
     mapping(address => uint256) public balances;
 
     // =============================================================
-    // Unforged queue
+    // Unforged queue (operation stream)
     // =============================================================
     // Tx record layout (9 bytes / 72 bits):
     //   ilo(4) | ihi(4) | op(1)
@@ -184,7 +166,6 @@ contract Rollup is ReentrancyGuard {
 
     error BadValue();
     error MissingIdx();
-    error MissingAddrForIdx();
 
     error InsufficientBalance();
     error SendFailed();
@@ -192,11 +173,8 @@ contract Rollup is ReentrancyGuard {
     error EmptyBatch();
     error VerifyFail();
 
-    // Link/queue guards
-    error LinkAlreadyExists();
     error LinkDoesNotExist();
-    error EdgePending();
-    error PendingMismatch();
+    error LinkAlreadyExists();
     error BadOp();
 
     // =============================================================
@@ -226,6 +204,7 @@ contract Rollup is ReentrancyGuard {
     event ClosedNoLink(address indexed caller, address indexed counterparty, uint256 stakeWei);
     event Stolen(address indexed thief, address indexed counterparty, uint256 paidWei);
 
+    /// @notice Emitted when an op is appended to the unforged queue.
     event TxQueued(
         uint64 indexed batchId,
         uint32 indexed txId,
@@ -244,8 +223,6 @@ contract Rollup is ReentrancyGuard {
         bytes txData
     );
 
-    event LinkFinalized(address lo, address hi, bool linkedNow);
-
     event Withdrawal(address indexed account, uint256 amount);
 
     // =============================================================
@@ -262,7 +239,9 @@ contract Rollup is ReentrancyGuard {
         uint256 b = balances[msg.sender];
 
         if (b >= required) {
-            unchecked { balances[msg.sender] = b - required; }
+            unchecked {
+                balances[msg.sender] = b - required;
+            }
             if (msg.value != 0) balances[msg.sender] += msg.value;
             return;
         }
@@ -281,8 +260,11 @@ contract Rollup is ReentrancyGuard {
         if (counterparty == msg.sender) revert Self();
 
         (address lo, address hi) = _order(msg.sender, counterparty);
-        PairPacked storage p = pairs[lo][hi];
 
+        // Gate vouch: don't start handshake if already linked in truth-state.
+        if (linked[lo][hi]) revert LinkAlreadyExists();
+
+        PairPacked storage p = pairs[lo][hi];
         if (p.stakeWeiLocked != 0) revert PairAlreadyActive();
 
         uint256 s = stakeWei;
@@ -420,6 +402,7 @@ contract Rollup is ReentrancyGuard {
 
         bool callerIsLo = (msg.sender == lo);
 
+        // Must be the unfunded side; counterparty must already be funded.
         if (callerIsLo) {
             if (p.loFunded) revert AlreadyFunded();
             if (!p.hiFunded) revert NotCounterpartyFunded();
@@ -450,7 +433,8 @@ contract Rollup is ReentrancyGuard {
     }
 
     /// @notice After window ends, refund both and enqueue an ADD op.
-    /// @dev linked is NOT updated here; only pendingOp is set. linked updates on forging.
+    /// @dev Truth-state updates immediately: linked[lo][hi] becomes true here.
+    ///      latestGraphRoot catches up later via batching/proofs.
     function finalize(address a, address b) external payable nonReentrant {
         if (a == address(0) || b == address(0)) revert ZeroAddress();
         if (a == b) revert Self();
@@ -466,21 +450,14 @@ contract Rollup is ReentrancyGuard {
         uint64 end = p.windowStart + uint64(p.durationLocked);
         if (block.timestamp <= end) revert WindowStillOpen();
 
-        // must not already be linked (finalized state)
-        if (linked[lo][hi]) revert LinkAlreadyExists();
-
         // indices must exist
         uint32 ia = registry.accountIdx(lo);
         uint32 ib = registry.accountIdx(hi);
         if (ia == 0 || ib == 0) revert MissingIdx();
         (uint32 ilo, uint32 ihi) = ia < ib ? (ia, ib) : (ib, ia);
 
-        // no duplicates while pending
-        if (pendingOp[ilo][ihi] != 0) revert EdgePending();
-
-        // fee
-        if (msg.value != txFeeWei) revert BadValue();
-        feePool += txFeeWei;
+        if (msg.value != TX_FEE_WEI) revert BadValue();
+        feePool += TX_FEE_WEI;
 
         uint256 s = uint256(p.stakeWeiLocked);
 
@@ -488,7 +465,8 @@ contract Rollup is ReentrancyGuard {
         balances[lo] += s;
         balances[hi] += s;
 
-        pendingOp[ilo][ihi] = OP_ADD;
+        // Truth-state update
+        linked[lo][hi] = true;
 
         uint32 txId = nextTxId++;
         uint32 ts = uint32(block.timestamp);
@@ -498,13 +476,15 @@ contract Rollup is ReentrancyGuard {
         emit TxQueued(batchId, txId, OP_ADD, ilo, ihi, ts);
     }
 
-    /// @notice Enqueue a REVOKE op (finalized link must exist).
+    /// @notice Enqueue a REVOKE op. Gated to existing truth-state edge.
+    /// @dev Truth-state updates immediately: linked[lo][hi] becomes false here.
     function revoke(address counterparty) external payable nonReentrant {
         if (counterparty == address(0)) revert ZeroAddress();
         if (counterparty == msg.sender) revert Self();
 
         (address lo, address hi) = _order(msg.sender, counterparty);
 
+        // Gate revoke: only allow if edge currently exists in truth-state.
         if (!linked[lo][hi]) revert LinkDoesNotExist();
 
         uint32 ia = registry.accountIdx(msg.sender);
@@ -512,12 +492,11 @@ contract Rollup is ReentrancyGuard {
         if (ia == 0 || ib == 0) revert MissingIdx();
         (uint32 ilo, uint32 ihi) = ia < ib ? (ia, ib) : (ib, ia);
 
-        if (pendingOp[ilo][ihi] != 0) revert EdgePending();
+        if (msg.value != TX_FEE_WEI) revert BadValue();
+        feePool += TX_FEE_WEI;
 
-        if (msg.value != txFeeWei) revert BadValue();
-        feePool += txFeeWei;
-
-        pendingOp[ilo][ihi] = OP_REVOKE;
+        // Truth-state update
+        linked[lo][hi] = false;
 
         uint32 txId = nextTxId++;
         uint32 ts = uint32(block.timestamp);
@@ -528,7 +507,7 @@ contract Rollup is ReentrancyGuard {
     }
 
     // =============================================================
-    // Forging
+    // Forging (root catch-up only; does NOT touch linked)
     // =============================================================
     function submitBatch(
         bytes32 newGraphRoot,
@@ -555,9 +534,6 @@ contract Rollup is ReentrancyGuard {
 
         if (!verifier.verifyProof(a, b, c, input)) revert VerifyFail();
 
-        // Apply proven changes to on-chain link state + clear pending
-        _applyForgedToLinks(start, n);
-
         latestGraphRoot = newGraphRoot;
 
         emit BatchSubmitted(batchId, n, start, storageHash, newGraphRoot, txData);
@@ -565,43 +541,16 @@ contract Rollup is ReentrancyGuard {
         _deleteForged(start, n);
 
         lastForgedId = lastForgedId + n;
-        unchecked { batchId += 1; }
-
-        uint256 reward = uint256(n) * txFeeWei;
-        require(feePool >= reward, "FEEPOOL_LOW");
-        unchecked { feePool -= reward; }
-        balances[msg.sender] += reward;
-    }
-
-    function _applyForgedToLinks(uint32 start, uint32 n) internal {
-        for (uint32 i = 0; i < n; ++i) {
-            uint128 w = unforged[start + i];
-            (uint32 ilo, uint32 ihi, uint8 op) = _unpackTx(w);
-
-            uint8 p = pendingOp[ilo][ihi];
-            if (p != op) revert PendingMismatch();
-
-            address a = registry.idxToAccount(ilo);
-            address b = registry.idxToAccount(ihi);
-            if (a == address(0) || b == address(0)) revert MissingAddrForIdx();
-
-            (address lo, address hi) = _order(a, b);
-
-            if (op == OP_ADD) {
-                // optional safety (should already be false due to enqueue check)
-                if (linked[lo][hi]) revert LinkAlreadyExists();
-                linked[lo][hi] = true;
-                pendingOp[ilo][ihi] = 0;
-                emit LinkFinalized(lo, hi, true);
-            } else if (op == OP_REVOKE) {
-                if (!linked[lo][hi]) revert LinkDoesNotExist();
-                linked[lo][hi] = false;
-                pendingOp[ilo][ihi] = 0;
-                emit LinkFinalized(lo, hi, false);
-            } else {
-                revert BadOp();
-            }
+        unchecked {
+            batchId += 1;
         }
+
+        uint256 reward = uint256(n) * TX_FEE_WEI;
+        require(feePool >= reward, "FEEPOOL_LOW");
+        unchecked {
+            feePool -= reward;
+        }
+        balances[msg.sender] += reward;
     }
 
     function _maskTo253(bytes32 h) internal pure returns (uint256) {
@@ -623,16 +572,17 @@ contract Rollup is ReentrancyGuard {
             uint128 w = unforged[start + i];
             (uint32 ilo, uint32 ihi, uint8 op) = _unpackTx(w);
 
+            // ilo
             txData[off + 0] = bytes1(uint8(ilo >> 24));
             txData[off + 1] = bytes1(uint8(ilo >> 16));
             txData[off + 2] = bytes1(uint8(ilo >> 8));
             txData[off + 3] = bytes1(uint8(ilo));
-
+            // ihi
             txData[off + 4] = bytes1(uint8(ihi >> 24));
             txData[off + 5] = bytes1(uint8(ihi >> 16));
             txData[off + 6] = bytes1(uint8(ihi >> 8));
             txData[off + 7] = bytes1(uint8(ihi));
-
+            // op
             txData[off + 8] = bytes1(op);
 
             off += 9;
@@ -654,7 +604,9 @@ contract Rollup is ReentrancyGuard {
         uint256 b = balances[msg.sender];
         if (amount > b) revert InsufficientBalance();
 
-        unchecked { balances[msg.sender] = b - amount; }
+        unchecked {
+            balances[msg.sender] = b - amount;
+        }
 
         (bool ok,) = payable(msg.sender).call{value: amount}("");
         if (!ok) revert SendFailed();
@@ -678,6 +630,7 @@ contract Rollup is ReentrancyGuard {
     // Packing helpers
     // =============================================================
     function _packTx(uint32 ilo, uint32 ihi, uint8 op) internal pure returns (uint128 w) {
+        // w = (ilo<<40) | (ihi<<8) | op
         w = (uint128(ilo) << 40) | (uint128(ihi) << 8) | uint128(op);
     }
 
@@ -700,7 +653,43 @@ contract Rollup is ReentrancyGuard {
     }
 
     // =============================================================
-    // Views
+    // Read helpers (pending ops view)
+    // =============================================================
+    /// @notice Pending txs are [lastForgedId+1 .. nextTxId-1]
+    function pendingOps()
+        external
+        view
+        returns (uint32 startTxId, uint32 endTxId, uint32 count)
+    {
+        startTxId = lastForgedId + 1;
+        endTxId = nextTxId - 1;
+        if (endTxId < startTxId) return (startTxId, endTxId, 0);
+        count = endTxId - lastForgedId;
+    }
+
+    /// @notice Useful "lag" metric: how many enqueued ops are not yet represented in latestGraphRoot
+    function lag() external view returns (uint32 pending) {
+        uint32 endTxId = nextTxId - 1;
+        if (endTxId <= lastForgedId) return 0;
+        return endTxId - lastForgedId;
+    }
+
+    /// @notice Read a queued tx by id.
+    function getQueuedTx(uint32 txId) external view returns (uint32 ilo, uint32 ihi, uint8 op) {
+        uint128 w = unforged[txId];
+        (ilo, ihi, op) = _unpackTx(w);
+    }
+
+    /// @notice Fetch a slice of queued packed words (handy for offchain batch building).
+    function getQueuedWords(uint32 startTxId, uint32 n) external view returns (uint128[] memory words) {
+        words = new uint128[](n);
+        for (uint32 i = 0; i < n; ++i) {
+            words[i] = unforged[startTxId + i];
+        }
+    }
+
+    // =============================================================
+    // Existing views from earlier
     // =============================================================
     function windowEnd(address a, address b) external view returns (uint64 end, bool open) {
         if (a == address(0) || b == address(0) || a == b) return (0, false);
@@ -711,17 +700,37 @@ contract Rollup is ReentrancyGuard {
         open = true;
     }
 
-    function edgeStatus(address a, address b) external view returns (bool finalizedLinked, uint8 pending) {
-        if (a == address(0) || b == address(0) || a == b) return (false, 0);
+    function pairState(address a, address b)
+        external
+        view
+        returns (
+            address lo,
+            address hi,
+            uint256 stakeWeiLocked,
+            uint32 durationLocked,
+            bool loFunded,
+            bool hiFunded,
+            uint64 windowStart,
+            uint64 windowEndT,
+            bool windowOpen
+        )
+    {
+        if (a == address(0) || b == address(0) || a == b) {
+            return (address(0), address(0), 0, 0, false, false, 0, 0, false);
+        }
 
-        (address lo, address hi) = _order(a, b);
-        finalizedLinked = linked[lo][hi];
+        (lo, hi) = _order(a, b);
+        PairPacked storage p = pairs[lo][hi];
 
-        uint32 ia = registry.accountIdx(a);
-        uint32 ib = registry.accountIdx(b);
-        if (ia == 0 || ib == 0) return (finalizedLinked, 0);
+        stakeWeiLocked = uint256(p.stakeWeiLocked);
+        durationLocked = p.durationLocked;
+        loFunded = p.loFunded;
+        hiFunded = p.hiFunded;
+        windowStart = p.windowStart;
 
-        (uint32 ilo, uint32 ihi) = ia < ib ? (ia, ib) : (ib, ia);
-        pending = pendingOp[ilo][ihi];
+        if (windowStart != 0) {
+            windowEndT = windowStart + uint64(durationLocked);
+            windowOpen = block.timestamp <= windowEndT;
+        }
     }
 }
