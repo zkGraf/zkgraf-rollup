@@ -59,12 +59,7 @@ contract Rollup is ReentrancyGuard {
     event StakeUpdated(uint256 stakeWei);
     event DurationUpdated(uint32 windowDuration);
 
-    constructor(
-        address registry_,
-        address verifier_,
-        uint256 stakeWei_,
-        uint32 windowDuration_
-    ) {
+    constructor(address registry_, address verifier_, uint256 stakeWei_, uint32 windowDuration_) {
         require(registry_ != address(0), "REGISTRY_ZERO");
         require(verifier_ != address(0), "VERIFIER_ZERO");
         require(stakeWei_ != 0, "STAKE_ZERO");
@@ -105,8 +100,8 @@ contract Rollup is ReentrancyGuard {
     // =============================================================
     struct PairPacked {
         uint128 stakeWeiLocked; // 0 => inactive
-        uint32 durationLocked;  // seconds
-        uint64 windowStart;     // 0 => not open
+        uint32 durationLocked; // seconds
+        uint64 windowStart; // 0 => not open
         bool loFunded;
         bool hiFunded;
     }
@@ -205,22 +200,10 @@ contract Rollup is ReentrancyGuard {
     event Stolen(address indexed thief, address indexed counterparty, uint256 paidWei);
 
     /// @notice Emitted when an op is appended to the unforged queue.
-    event TxQueued(
-        uint64 indexed batchId,
-        uint32 indexed txId,
-        uint8 op,
-        uint32 ilo,
-        uint32 ihi,
-        uint32 ts
-    );
+    event TxQueued(uint64 indexed batchId, uint32 indexed txId, uint8 op, uint32 ilo, uint32 ihi, uint32 ts);
 
     event BatchSubmitted(
-        uint64 indexed batchId,
-        uint32 n,
-        uint32 startTxId,
-        bytes32 storageHash,
-        bytes32 newGraphRoot,
-        bytes txData
+        uint64 indexed batchId, uint32 n, uint32 startTxId, bytes32 storageHash, bytes32 newGraphRoot, bytes txData
     );
 
     event Withdrawal(address indexed account, uint256 amount);
@@ -656,11 +639,7 @@ contract Rollup is ReentrancyGuard {
     // Read helpers (pending ops view)
     // =============================================================
     /// @notice Pending txs are [lastForgedId+1 .. nextTxId-1]
-    function pendingOps()
-        external
-        view
-        returns (uint32 startTxId, uint32 endTxId, uint32 count)
-    {
+    function pendingOps() external view returns (uint32 startTxId, uint32 endTxId, uint32 count) {
         startTxId = lastForgedId + 1;
         endTxId = nextTxId - 1;
         if (endTxId < startTxId) return (startTxId, endTxId, 0);

@@ -25,12 +25,11 @@ contract MockVerifier is IGroth16Verifier {
         ok = v;
     }
 
-    function verifyProof(
-        uint256[2] calldata,
-        uint256[2][2] calldata,
-        uint256[2] calldata,
-        uint256[1] calldata
-    ) external view returns (bool) {
+    function verifyProof(uint256[2] calldata, uint256[2][2] calldata, uint256[2] calldata, uint256[1] calldata)
+        external
+        view
+        returns (bool)
+    {
         return ok;
     }
 }
@@ -74,7 +73,7 @@ contract RollupTest is Test {
     address internal batcher;
 
     uint256 internal STAKE = 0.003 ether;
-    uint32  internal DUR   = 3 days;
+    uint32 internal DUR = 3 days;
 
     // Used only as the 5th constructor arg in initcode deployment.
     // If Rollup no longer takes a fee arg, it will be ignored.
@@ -119,8 +118,7 @@ contract RollupTest is Test {
         uint256 txFeeWei_
     ) internal returns (Rollup r) {
         bytes memory init = abi.encodePacked(
-            type(Rollup).creationCode,
-            abi.encode(registry_, verifier_, stakeWei_, windowDuration_, txFeeWei_)
+            type(Rollup).creationCode, abi.encode(registry_, verifier_, stakeWei_, windowDuration_, txFeeWei_)
         );
 
         address deployed;
@@ -359,7 +357,7 @@ contract RollupTest is Test {
         _openHandshake(alice, bob, false, false);
 
         (address lo, address hi) = _order(alice, bob);
-        (, , uint64 windowStart, bool loFunded, bool hiFunded) = rollup.pairs(lo, hi);
+        (,, uint64 windowStart, bool loFunded, bool hiFunded) = rollup.pairs(lo, hi);
 
         assertTrue(loFunded);
         assertTrue(hiFunded);
@@ -478,7 +476,7 @@ contract RollupTest is Test {
         // queue entry exists
         uint128 w = rollup.unforged(txId);
         assertTrue(w != 0);
-        (, , uint8 op) = _unpack(w);
+        (,, uint8 op) = _unpack(w);
         assertEq(op, 1); // OP_ADD
     }
 
@@ -504,7 +502,7 @@ contract RollupTest is Test {
 
         uint128 w = rollup.unforged(txId);
         assertTrue(w != 0);
-        (, , uint8 op) = _unpack(w);
+        (,, uint8 op) = _unpack(w);
         assertEq(op, 2); // OP_REVOKE
     }
 
