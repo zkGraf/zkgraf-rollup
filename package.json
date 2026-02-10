@@ -1,7 +1,21 @@
 {
-  "name": "orgname-rollup",
+  "name": "zkgraf-rollup",
   "private": true,
+  "version": "1.0.0",
+  "description": "An zk-rollup for maintaining a trust graph between registered accounts.",
+  "type": "module",
   "scripts": {
+    "test:circuits": "mocha \"circuits/test/**/*.js\"",
+    "test:contracts": "forge test",
+    "test:all": "npm run test:circuits && forge test",
     "circuits:verifier": "snarkjs zkey export solidityverifier circuits/build/circuit_final.zkey src/verifier/Groth16Verifier.sol"
+  },
+  "devDependencies": {
+    "chai": "^5.1.0",
+    "circom_tester": "^0.0.24",
+    "mocha": "^11.1.0"
+  },
+  "dependencies": {
+    "circomlib": "^2.0.5"
   }
 }

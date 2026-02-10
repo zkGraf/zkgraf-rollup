@@ -48,3 +48,4 @@ A: cancel vouch            B: vouch for A (B pays stake S)
                               - append link to unforged queue
 
 ```
+
