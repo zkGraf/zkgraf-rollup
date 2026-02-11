@@ -8,11 +8,14 @@
     "test:circuits": "mocha \"circuits/test/**/*.js\"",
     "test:contracts": "forge test",
     "test:all": "npm run test:circuits && forge test",
-    "circuits:verifier": "snarkjs zkey export solidityverifier circuits/build/circuit_final.zkey src/verifier/Groth16Verifier.sol"
+    "circuits:verifier": "snarkjs zkey export solidityverifier circuits/build/circuit_final.zkey src/verifier/Groth16Verifier.sol",
+    "circuits:info": "mkdir -p circuits/build && circom circuits/main.circom --r1cs -o circuits/build >/dev/null && npx snarkjs r1cs info circuits/build/main.r1cs",
+    "circuits:info:file": "node circuits/scripts/r1cs-info.mjs"
   },
   "devDependencies": {
     "chai": "^5.1.0",
     "circom_tester": "^0.0.24",
+    "circomlibjs": "^0.1.7",
     "mocha": "^11.1.0"
   },
   "dependencies": {

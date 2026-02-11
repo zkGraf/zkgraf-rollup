@@ -1,10 +1,5 @@
-pragma circom 2.0.0;
+pragma circom 2.1.0;
 
-template MerkleUpdate() {
-    signal input oldRoot;
-    signal input newRoot;
-    signal input leaf;
-    newRoot === oldRoot + leaf;
-}
+include "process_batch.circom";
 
-component main { public [oldRoot, newRoot] } = MerkleUpdate();
+component main { public [pubInput0] } = ProcessBatch(3, 32);

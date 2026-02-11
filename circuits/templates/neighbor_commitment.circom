@@ -4,6 +4,7 @@ include "circomlib/circuits/poseidon.circom";
 
 template NeighborCommitment() {
     signal input neighbors[64];
+    signal input degree; // assumed to be the actaul degree. 
     signal output out;
     
     component h0 = Poseidon(16);
@@ -18,11 +19,12 @@ template NeighborCommitment() {
         h3.inputs[i] <== neighbors[48 + i];
     }
     
-    component combine = Poseidon(4);
+    component combine = Poseidon(5);
     combine.inputs[0] <== h0.out;
     combine.inputs[1] <== h1.out;
     combine.inputs[2] <== h2.out;
     combine.inputs[3] <== h3.out;
-    
+    combine.inputs[4] <== degree;
     out <== combine.out;
 }
+

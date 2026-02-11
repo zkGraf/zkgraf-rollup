@@ -508,7 +508,7 @@ contract Rollup is ReentrancyGuard {
         uint32 avail = endSnapshot - lastForgedId;
         if (n > avail) revert EmptyBatch();
 
-        (bytes memory txData, bytes32 storageHash) = _buildTxDataAndStorageHash(start, n);
+        (bytes memory txDataFixed, bytes32 storageHash) = _buildTxDataFixedAndStorageHash(start, n);
 
         bytes32 pubInputsHash = sha256(abi.encodePacked(latestGraphRoot, newGraphRoot, batchId, n, storageHash));
 
@@ -519,7 +519,7 @@ contract Rollup is ReentrancyGuard {
 
         latestGraphRoot = newGraphRoot;
 
-        emit BatchSubmitted(batchId, n, start, storageHash, newGraphRoot, txData);
+        emit BatchSubmitted(batchId, n, start, storageHash, newGraphRoot, txDataFixed);
 
         _deleteForged(start, n);
 
@@ -542,36 +542,34 @@ contract Rollup is ReentrancyGuard {
         return x & mask;
     }
 
-    function _buildTxDataAndStorageHash(uint32 start, uint32 n)
+    function _buildTxDataFixedAndStorageHash(uint32 start, uint32 n)
         internal
         view
-        returns (bytes memory txData, bytes32 storageHash)
+        returns (bytes memory txDataFixed, bytes32 storageHash)
     {
-        // 9 bytes per tx: ilo(4) | ihi(4) | op(1)
-        txData = new bytes(uint256(n) * 9);
+        // 9 bytes per tx, fixed MAX_BATCH slots
+        txDataFixed = new bytes(uint256(MAX_BATCH) * 9);
         uint256 off = 0;
 
         for (uint32 i = 0; i < n; ++i) {
             uint128 w = unforged[start + i];
             (uint32 ilo, uint32 ihi, uint8 op) = _unpackTx(w);
 
-            // ilo
-            txData[off + 0] = bytes1(uint8(ilo >> 24));
-            txData[off + 1] = bytes1(uint8(ilo >> 16));
-            txData[off + 2] = bytes1(uint8(ilo >> 8));
-            txData[off + 3] = bytes1(uint8(ilo));
-            // ihi
-            txData[off + 4] = bytes1(uint8(ihi >> 24));
-            txData[off + 5] = bytes1(uint8(ihi >> 16));
-            txData[off + 6] = bytes1(uint8(ihi >> 8));
-            txData[off + 7] = bytes1(uint8(ihi));
-            // op
-            txData[off + 8] = bytes1(op);
+            txDataFixed[off + 0] = bytes1(uint8(ilo >> 24));
+            txDataFixed[off + 1] = bytes1(uint8(ilo >> 16));
+            txDataFixed[off + 2] = bytes1(uint8(ilo >> 8));
+            txDataFixed[off + 3] = bytes1(uint8(ilo));
+            txDataFixed[off + 4] = bytes1(uint8(ihi >> 24));
+            txDataFixed[off + 5] = bytes1(uint8(ihi >> 16));
+            txDataFixed[off + 6] = bytes1(uint8(ihi >> 8));
+            txDataFixed[off + 7] = bytes1(uint8(ihi));
+            txDataFixed[off + 8] = bytes1(op);
 
             off += 9;
         }
 
-        storageHash = sha256(abi.encodePacked(batchId, start, n, txData));
+        // Remaining bytes are already zero (NULL tx)
+        storageHash = sha256(abi.encodePacked(batchId, start, n, txDataFixed));
     }
 
     function _deleteForged(uint32 start, uint32 n) internal {
