@@ -40,8 +40,9 @@ contract Rollup is ReentrancyGuard {
 
     address public owner;
 
-    uint32 public constant MAX_BATCH = 100;
+    uint32 public constant MAX_BATCH = 3;
     uint256 public constant TX_FEE_WEI = 0.00005 ether;
+    uint8 public constant MAX_DEGREE = 64;
 
     /// @notice reward pool funded by enqueue fees
     uint256 public feePool;
@@ -112,7 +113,7 @@ contract Rollup is ReentrancyGuard {
     // Truth-state: permanent links (address-keyed, canonical order)
     // =============================================================
     mapping(address => mapping(address => bool)) public linked; // [lo][hi]
-
+    mapping(address => uint8) public degree;
     // =============================================================
     // Pull payments
     // =============================================================
@@ -433,11 +434,15 @@ contract Rollup is ReentrancyGuard {
         uint64 end = p.windowStart + uint64(p.durationLocked);
         if (block.timestamp <= end) revert WindowStillOpen();
 
+        if (linked[lo][hi]) revert LinkAlreadyExists();
+
         // indices must exist
         uint32 ia = registry.accountIdx(lo);
         uint32 ib = registry.accountIdx(hi);
         if (ia == 0 || ib == 0) revert MissingIdx();
         (uint32 ilo, uint32 ihi) = ia < ib ? (ia, ib) : (ib, ia);
+
+        if (degree[lo] >= MAX_DEGREE || degree[hi] >= MAX_DEGREE) revert BadValue(); // or NodeFull()
 
         if (msg.value != TX_FEE_WEI) revert BadValue();
         feePool += TX_FEE_WEI;
@@ -450,7 +455,10 @@ contract Rollup is ReentrancyGuard {
 
         // Truth-state update
         linked[lo][hi] = true;
-
+        unchecked {
+            degree[lo] += 1;
+            degree[hi] += 1;
+        }
         uint32 txId = nextTxId++;
         uint32 ts = uint32(block.timestamp);
 
@@ -481,6 +489,14 @@ contract Rollup is ReentrancyGuard {
         // Truth-state update
         linked[lo][hi] = false;
 
+        // Optional sanity (should always hold if invariants are correct)
+        if (degree[lo] == 0 || degree[hi] == 0) revert BadValue(); // or custom DegreeInvariant()
+
+        // Degree update (authoritative)
+        unchecked {
+            degree[lo] -= 1;
+            degree[hi] -= 1;
+        }
         uint32 txId = nextTxId++;
         uint32 ts = uint32(block.timestamp);
 
@@ -510,7 +526,7 @@ contract Rollup is ReentrancyGuard {
 
         (bytes memory txDataFixed, bytes32 storageHash) = _buildTxDataFixedAndStorageHash(start, n);
 
-        bytes32 pubInputsHash = sha256(abi.encodePacked(latestGraphRoot, newGraphRoot, batchId, n, storageHash));
+        bytes32 pubInputsHash = sha256(abi.encodePacked(latestGraphRoot, newGraphRoot, batchId, start, n, storageHash));
 
         uint256[1] memory input;
         input[0] = _maskTo253(pubInputsHash);
@@ -569,7 +585,7 @@ contract Rollup is ReentrancyGuard {
         }
 
         // Remaining bytes are already zero (NULL tx)
-        storageHash = sha256(abi.encodePacked(batchId, start, n, txDataFixed));
+        storageHash = sha256(txDataFixed);
     }
 
     function _deleteForged(uint32 start, uint32 n) internal {

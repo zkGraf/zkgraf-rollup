@@ -2,6 +2,7 @@ pragma circom 2.1.0;
 
 include "circomlib/circuits/bitify.circom";
 include "circomlib/circuits/sha256/sha256.circom";
+
 include "templates/bytes_utils.circom";
 
 /// @notice Computes storageHash = sha256(txDataFixed)

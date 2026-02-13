@@ -16,7 +16,9 @@
     "chai": "^5.1.0",
     "circom_tester": "^0.0.24",
     "circomlibjs": "^0.1.7",
-    "mocha": "^11.1.0"
+    "ethers": "^6.16.0",
+    "mocha": "^11.1.0",
+    "snarkjs": "^0.7.6"
   },
   "dependencies": {
     "circomlib": "^2.0.5"

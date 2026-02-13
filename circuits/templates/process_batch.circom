@@ -3,15 +3,11 @@ pragma circom 2.1.0;
 include "circomlib/circuits/bitify.circom";
 include "circomlib/circuits/comparators.circom";
 
-// Existing template that hashes txDataFixed built from ilo/ihi/op.
-// Must output digest[256] bits (MSB-first per byte in your convention).
 include "templates/storage_hash.circom";
-
-// Field element -> bytes32 big-endian
 include "templates/field_to_bytes.circom";
-
-// Pubinputs = sha256(oldRootBytes32,newRootBytes32,batchId,start,n,storageHashBytes32) masked to 253
 include "templates/pubinputs_masked.circom";
+include "templates/process_op.circom";
+
 
 template ProcessBatch(batchSize, smtLevels) {
     // -----------------------------

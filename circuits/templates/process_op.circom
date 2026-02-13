@@ -2,9 +2,10 @@ pragma circom 2.1.0;
 
 include "circomlib/circuits/comparators.circom";   // IsEqual, IsZero
 include "circomlib/circuits/mux1.circom";          // Mux1
+include "circomlib/circuits/smt/smtprocessor.circom";
+
 include "templates/modify_array.circom";
 include "templates/neighbor_commitment.circom";
-include "circomlib/circuits/smt/smtprocessor.circom";
 
 template ProcessOp(smtLevels) {
     signal input currentRoot;
@@ -125,7 +126,7 @@ template ProcessOp(smtLevels) {
 
     // -----------------------
     // Optional: if not inserting, require witness key matches target key.
-    // (SMTProcessor enforces oldKey==newKey when UPDATE, but oldKey is your witness input.
+    // (SMTProcessor enforces oldKey==newKey when UPDATE, but oldKey is witness input.
     //  We set newKey=ilo/ihi, so UPDATE implies oldKey must equal ilo/ihi anyway.)
     // -----------------------
 }

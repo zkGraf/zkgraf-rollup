@@ -28,3 +28,8 @@ template StorageHashTest(BATCH_SIZE) {
 // Choose your batch size here.
 // For your Solidity contract MAX_BATCH=100, use 100.
 component main = StorageHashTest(10);
+
+
+
+
+

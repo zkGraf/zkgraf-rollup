@@ -2,23 +2,9 @@ pragma circom 2.1.0;
 
 include "circomlib/circuits/bitify.circom";
 include "circomlib/circuits/sha256/sha256.circom";
+
 include "templates/bytes_utils.circom";
 
-// Convert digest bits (MSB-first per byte) -> 32 bytes
-template DigestBitsToBytes32() {
-    signal input digest[256];  // digest[0] is MSB of byte0
-    signal output out[32];     // bytes 0..255
-
-    component b2n[32];
-    for (var i = 0; i < 32; i++) {
-        b2n[i] = Bits2Num(8);
-        // Bits2Num expects LSB-first, so reverse within the byte
-        for (var k = 0; k < 8; k++) {
-            b2n[i].in[k] <== digest[i*8 + (7 - k)];
-        }
-        out[i] <== b2n[i].out;
-    }
-}
 
 /// pubInput0 = mask253( sha256( abi.encodePacked(oldRoot32,newRoot32,batchIdU64,startU32,nU32,storageHash32) ) )
 template PubInputsMasked() {

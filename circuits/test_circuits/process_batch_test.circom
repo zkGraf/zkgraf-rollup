@@ -1,11 +1,6 @@
 pragma circom 2.1.0;
-include "templates/process_op.circom";
 
-include "templates/process_batch.circom"; // <-- put your ProcessBatch template in this file, or change include
-// IMPORTANT: ProcessBatch requires ProcessOp(smtLevels) to be included somewhere reachable.
-// If ProcessOp lives in another file, include it either here or inside process_batch.circom.
-// Example:
-// include "templates/process_op.circom";
+include "templates/process_batch.circom"; 
 
 template ProcessBatchTest(BATCH_SIZE, SMT_LEVELS) {
     signal input oldRootF;
@@ -76,6 +71,4 @@ template ProcessBatchTest(BATCH_SIZE, SMT_LEVELS) {
     out[0] <== pb.pubInput0;
 }
 
-// Match these to your intended params.
-// For quick tests keep batch small. For real: (100,160) etc.
-component main = ProcessBatchTest(10, 32);
+component main = ProcessBatchTest(3, 32);
