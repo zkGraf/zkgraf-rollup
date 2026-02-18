@@ -46,6 +46,9 @@ template ProcessOp(smtLevels) {
 
     signal doNop <== is0.out;
 
+    isOld0_lo * (isOld0_lo - 1) === 0;
+    isOld0_hi * (isOld0_hi - 1) === 0;
+
     // -----------------------
     // Neighbor arrays update (mutual)
     // -----------------------
@@ -65,7 +68,6 @@ template ProcessOp(smtLevels) {
 
     // -----------------------
     // New leaf values = NeighborCommitment(newArr, newDeg)
-    // (Your NeighborCommitment now outputs 0 when degree==0.)
     // -----------------------
     component ncLo = NeighborCommitment();
     for (var i = 0; i < 64; i++) ncLo.neighbors[i] <== modLo.newArr[i];

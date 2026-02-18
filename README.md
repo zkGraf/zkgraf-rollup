@@ -53,14 +53,14 @@ The Groth16 verifier contract is generated (snarkjs) and typically lives at:
 ---
 
 ## Repository layout
-src/ Solidity contracts
-src/verifier/ Generated verifier (snarkjs)
-test/ Forge unit/invariant tests
-script/ Deployment scripts (forge script)
-circuits/ Circom circuits + snarkjs artifacts
-docs/ Specs (encoding, protocol, threat model)
-tools/ Helper scripts (hashing/encoding checks)
-.github/workflows/ CI
+- src/ Solidity contracts
+- src/verifier/ Generated verifier (snarkjs)
+- test/ Forge unit/invariant tests
+- script/ Deployment scripts (forge script)
+- circuits/ Circom circuits + snarkjs artifacts
+- docs/ Specs (encoding, protocol, threat model)
+- tools/ Helper scripts (hashing/encoding checks)
+- .github/workflows/ CI
 
 ---
 
